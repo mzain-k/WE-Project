@@ -29,7 +29,12 @@ export const signup = async (req, res) => {
     const user = await User.create({ name, cmsId, batch, program, password });
     res.status(201).json({ token: signToken(user._id), user: userPayload(user) });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.log(err);
+    res
+    .status(500)
+    .json({
+      message: "Server error"
+    });
   }
 };
 
@@ -45,7 +50,12 @@ export const login = async (req, res) => {
 
     res.json({ token: signToken(user._id), user: userPayload(user) });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.log(err);
+    res
+    .status(500)
+    .json({
+      message: "Server error"
+    });
   }
 };
 

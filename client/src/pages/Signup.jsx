@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const programs = ["BSCS", "BSSE", "BSAI", "BSEE", "BBA", "Other"];
-const batches = ["2021", "2022", "2023", "2024", "2025", "2026"];
+const programs = ["BSCS", "BSAI", "BECE", "Other"];
+const batches = ["2023", "2024", "2025", "2026"];
 const input =
   "w-full border border-slate-300 rounded-xl px-4 py-3 outline-none focus:border-green-600 bg-white";
 
