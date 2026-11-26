@@ -1,4 +1,5 @@
 import { useAuth } from "../context/AuthContext";
+import { Link } from "react-router-dom";
 
 export default function Home() {
   const { user, logout } = useAuth();
@@ -13,6 +14,12 @@ export default function Home() {
       >
         Log out
       </button>
+      <Link
+        to="/new-booking"
+        className="inline-block mt-4 ml-3 bg-green-600 text-white rounded-xl px-4 py-2"
+      >
+        New booking
+      </Link>
     </div>
   );
 }

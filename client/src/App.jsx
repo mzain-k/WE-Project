@@ -3,6 +3,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Home from "./pages/Home";
+import NewBooking from "./pages/NewBooking";
 
 export default function App() {
   return (
@@ -14,6 +15,13 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/new-booking"
+        element={
+          <ProtectedRoute>
+          <NewBooking />
           </ProtectedRoute>
         }
       />
