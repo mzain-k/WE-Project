@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Match from "../models/Match.js";
 import SlotBlock from "../models/SlotBlock.js";
 import {
@@ -5,6 +6,7 @@ import {
   RESERVE_POSITIONS,
 } from "../config/turf.js";
 import {
+  getToday,
   isValidDateString,
   isDateInWindow,
   getSlotHours,
@@ -214,7 +216,225 @@ const createMatch = async (req, res) => {
   }
 };
 
+const getEffectiveStatus = (match) => {
+  if (!match.isActive || match.status === "cancelled") {
+    return "cancelled";
+  }
+
+  if (isSlotPast(match.date, match.slotStart + 1)) {
+    return "completed";
+  }
+
+  return match.status;
+};
+
+const countMain = (players, team) => {
+  return players.filter((player) => {
+    return player.team === team && !player.isReserve;
+  }).length;
+};
+
+const getMatches = async (req, res) => {
+  try {
+    const { date, open } = req.query;
+    const filter = {
+      isActive: true,
+      date: {
+        $gte: getToday(),
+      },
+    };
+
+    if (date) {
+      if (!isValidDateString(date)) {
+        return res.status(400).json({
+          message: "Invalid date",
+        });
+      }
+
+      filter.date = date;
+    }
+
+    const matches = await Match.find(filter)
+      .sort({
+        date: 1,
+        slotStart: 1,
+      })
+      .populate("createdBy", "name");
+
+    let list = matches
+      .map((match) => {
+        return {
+          _id: match._id,
+          date: match.date,
+          slotStart: match.slotStart,
+          note: match.note,
+          status: getEffectiveStatus(match),
+          createdBy: match.createdBy?.name || "Unknown",
+          teamAClosed: match.teamAClosed,
+          teamBClosed: match.teamBClosed,
+          teamACount: countMain(match.players, "A"),
+          teamBCount: countMain(match.players, "B"),
+        };
+      })
+      .filter((match) => match.status !== "completed");
+
+    if (open === "true") {
+      list = list.filter((match) => match.status === "open");
+    }
+
+    res.json({
+      matches: list,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+const getMatchById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(404).json({
+        message: "Match not found",
+      });
+    }
+
+    const match = await Match.findOne({
+      _id: id,
+      isActive: true,
+    }).populate("createdBy", "name cmsId");
+
+    if (!match) {
+      return res.status(404).json({
+        message: "Match not found",
+      });
+    }
+
+    res.json({
+      match: {
+        ...match.toObject(),
+        status: getEffectiveStatus(match),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+const joinMatch = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { team, position } = req.body;
+    const allPositions = [...MAIN_POSITIONS, ...RESERVE_POSITIONS];
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(404).json({
+        message: "Match not found",
+      });
+    }
+
+    if (!["A", "B"].includes(team) || !allPositions.includes(position)) {
+      return res.status(400).json({
+        message: "Pick a valid team and position",
+      });
+    }
+
+    const match = await Match.findOne({
+      _id: id,
+      isActive: true,
+    });
+
+    if (!match) {
+      return res.status(404).json({
+        message: "Match not found",
+      });
+    }
+
+    if (isSlotPast(match.date, match.slotStart)) {
+      return res.status(400).json({
+        message: "This match has already started",
+      });
+    }
+
+    const closedField = team === "A" ? "teamAClosed" : "teamBClosed";
+
+    if (match[closedField]) {
+      return res.status(400).json({
+        message: "This team is already full",
+      });
+    }
+
+    const updated = await Match.findOneAndUpdate(
+      {
+        _id: id,
+        isActive: true,
+        [closedField]: false,
+        players: {
+          $not: {
+            $elemMatch: {
+              team,
+              position,
+            },
+          },
+        },
+        "players.cmsId": {
+          $ne: req.user.cmsId,
+        },
+      },
+      {
+        $push: {
+          players: {
+            team,
+            position,
+            isReserve: RESERVE_POSITIONS.includes(position),
+            name: req.user.name,
+            cmsId: req.user.cmsId,
+            user: req.user._id,
+          },
+        },
+      },
+      {
+        new: true,
+      },
+    );
+
+    if (!updated) {
+      return res.status(409).json({
+        message: "Position just got taken, or you already joined this match",
+      });
+    }
+
+    const mainCount = updated.players.filter((player) => {
+      return !player.isReserve;
+    }).length;
+
+    if (mainCount >= MAIN_POSITIONS.length * 2 && updated.status === "open") {
+      updated.status = "full";
+      await updated.save();
+    }
+
+    res.json({
+      match: updated,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
 export {
   getSlots,
   createMatch,
+  getMatches,
+  getMatchById,
+  joinMatch,
 };
