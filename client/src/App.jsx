@@ -5,6 +5,7 @@ import Signup from "./pages/Signup";
 import Home from "./pages/Home";
 import NewBooking from "./pages/NewBooking";
 import MatchDetails from "./pages/MatchDetails";
+import MyMatches from "./pages/MyMatches";
 
 export default function App() {
   return (
@@ -32,6 +33,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <MatchDetails />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/my-matches"
+        element={
+          <ProtectedRoute>
+            <MyMatches />
           </ProtectedRoute>
         }
       />

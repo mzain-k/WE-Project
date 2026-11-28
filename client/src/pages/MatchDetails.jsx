@@ -3,7 +3,11 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Link, useParams } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import Pitch from "../components/Pitch";
@@ -15,11 +19,14 @@ import {
 
 const MatchDetails = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [match, setMatch] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadMatch = useCallback(async () => {
@@ -27,6 +34,7 @@ const MatchDetails = () => {
       const res = await api.get(`/matches/${id}`);
 
       setMatch(res.data.match);
+      setNoteDraft(res.data.match.note || "");
     } catch (err) {
       setError(err.response?.data?.message || "Could not load match");
     } finally {
@@ -38,21 +46,65 @@ const MatchDetails = () => {
     loadMatch();
   }, [loadMatch]);
 
-  const handleJoin = async () => {
+  const runAction = async (action, successMessage) => {
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await action();
+
+      if (successMessage) {
+        setMessage(successMessage);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Something went wrong");
+    } finally {
+      setSelected(null);
+      await loadMatch();
+      setBusy(false);
+    }
+  };
+
+  const handleJoin = () => {
     if (!selected) {
       return setError("Tap an open position on the pitch");
+    }
+
+    runAction(() => api.post(`/matches/${id}/join`, selected), "You joined the match");
+  };
+
+  const handleLeave = () => {
+    if (!window.confirm("Leave this match?")) {
+      return;
+    }
+
+    runAction(() => api.delete(`/matches/${id}/leave`), "You left the match");
+  };
+
+  const handleSaveNote = () => {
+    runAction(
+      () =>
+        api.patch(`/matches/${id}`, {
+          note: noteDraft,
+        }),
+      "Note saved",
+    );
+  };
+
+  const handleCancel = async () => {
+    if (!window.confirm("Cancel this match? The slot will be freed.")) {
+      return;
     }
 
     setBusy(true);
     setError("");
 
     try {
-      await api.post(`/matches/${id}/join`, selected);
+      await api.delete(`/matches/${id}`);
+      navigate("/my-matches");
     } catch (err) {
       setError(err.response?.data?.message || "Something went wrong");
-    } finally {
-      setSelected(null);
-      await loadMatch();
       setBusy(false);
     }
   };
@@ -73,11 +125,13 @@ const MatchDetails = () => {
   }
 
   const parts = formatDateParts(match.date);
-  const alreadyJoined = match.players.some((player) => {
+  const myPlayer = match.players.find((player) => {
     return player.cmsId === user.cmsId;
   });
   const joinable = ["open", "full"].includes(match.status);
-  const locked = !joinable || alreadyJoined;
+  const locked = !joinable || Boolean(myPlayer);
+  const canLeave = joinable && myPlayer && myPlayer.user;
+  const isOwner = match.createdBy?._id === user._id || user.role === "admin";
   const countMain = (team) => {
     return match.players.filter((player) => {
       return player.team === team && !player.isReserve;
@@ -150,11 +204,23 @@ const MatchDetails = () => {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {message && <p className="text-sm text-green-700">{message}</p>}
 
-      {alreadyJoined ? (
-        <p className="text-sm text-green-700 font-medium">
-          You are in this match.
-        </p>
+      {myPlayer ? (
+        <div className="space-y-2">
+          <p className="text-sm text-green-700 font-medium">
+            You are in this match as {myPlayer.position} (Team {myPlayer.team}).
+          </p>
+          {canLeave && (
+            <button
+              onClick={handleLeave}
+              disabled={busy}
+              className="w-full border border-red-300 text-red-600 hover:bg-red-50 rounded-xl py-3 disabled:opacity-60"
+            >
+              Leave match
+            </button>
+          )}
+        </div>
       ) : joinable ? (
         <button
           onClick={handleJoin}
@@ -162,13 +228,42 @@ const MatchDetails = () => {
           className="w-full bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl py-3 disabled:opacity-60"
         >
           {busy
-            ? "Joining..."
+            ? "Please wait..."
             : selected
               ? `Confirm ${selected.position} in Team ${selected.team}`
               : "Tap an open position"}
         </button>
       ) : (
         <p className="text-sm text-slate-500">This match is not open for joining.</p>
+      )}
+
+      {isOwner && joinable && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+          <h2 className="font-medium">Manage match</h2>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:border-green-600"
+              maxLength={200}
+              placeholder="Match note"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+            />
+            <button
+              onClick={handleSaveNote}
+              disabled={busy}
+              className="border border-slate-300 rounded-xl px-4 hover:bg-slate-100 disabled:opacity-60"
+            >
+              Save
+            </button>
+          </div>
+          <button
+            onClick={handleCancel}
+            disabled={busy}
+            className="w-full bg-red-600 hover:bg-red-700 text-white rounded-xl py-3 disabled:opacity-60"
+          >
+            Cancel match
+          </button>
+        </div>
       )}
     </div>
   );

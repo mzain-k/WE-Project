@@ -54,6 +54,12 @@ const Home = () => {
           >
             New booking
           </Link>
+          <Link
+            to="/my-matches"
+            className="border border-slate-300 rounded-xl px-4 py-2 text-sm hover:bg-slate-100"
+          >
+            My matches
+          </Link>
           <button
             onClick={logout}
             className="border border-slate-300 rounded-xl px-4 py-2 text-sm hover:bg-slate-100"

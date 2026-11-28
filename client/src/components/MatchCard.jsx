@@ -7,12 +7,11 @@ import {
 
 const MatchCard = ({ match }) => {
   const parts = formatDateParts(match.date);
+  const cancelled = match.status === "cancelled";
+  const className = "block bg-white border border-slate-200 rounded-2xl p-4";
 
-  return (
-    <Link
-      to={`/matches/${match._id}`}
-      className="block bg-white border border-slate-200 rounded-2xl p-4 hover:border-green-600 transition"
-    >
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-display text-2xl tracking-wide">
@@ -32,9 +31,30 @@ const MatchCard = ({ match }) => {
         <span className="text-blue-700">Team B: {match.teamBCount}/6</span>
       </div>
 
+      {match.role && (
+        <p className="text-xs text-green-700 font-medium mt-2">
+          {match.role === "poster" ? "You posted this match" : "You are playing"}
+          {match.myPlayer &&
+            ` · Team ${match.myPlayer.team}, ${match.myPlayer.position}`}
+        </p>
+      )}
+
       {match.note && (
         <p className="text-sm text-slate-500 mt-2 truncate">{match.note}</p>
       )}
+    </>
+  );
+
+  if (cancelled) {
+    return <div className={`${className} opacity-70`}>{content}</div>;
+  }
+
+  return (
+    <Link
+      to={`/matches/${match._id}`}
+      className={`${className} hover:border-green-600 transition`}
+    >
+      {content}
     </Link>
   );
 };

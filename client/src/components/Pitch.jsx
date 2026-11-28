@@ -181,6 +181,7 @@ const PitchSvg = ({ vertical, className, ...shared }) => {
                 strokeWidth="1.5"
                 strokeDasharray={info.kind === "empty" ? "4 4" : undefined}
                 opacity={info.kind === "empty" && !info.joinable ? 0.5 : 1}
+                pointerEvents="all"
               />
               <text
                 x={point.x}

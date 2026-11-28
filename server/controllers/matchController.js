@@ -431,10 +431,221 @@ const joinMatch = async (req, res) => {
   }
 };
 
+const findActiveMatch = async (id) => {
+  if (!mongoose.isValidObjectId(id)) {
+    return null;
+  }
+
+  return Match.findOne({
+    _id: id,
+    isActive: true,
+  });
+};
+
+const canManage = (match, user) => {
+  return user.role === "admin" || String(match.createdBy) === String(user._id);
+};
+
+const getMyMatches = async (req, res) => {
+  try {
+    const matches = await Match.find({
+      $or: [
+        {
+          createdBy: req.user._id,
+        },
+        {
+          "players.user": req.user._id,
+        },
+        {
+          "players.cmsId": req.user.cmsId,
+        },
+      ],
+    })
+      .sort({
+        date: 1,
+        slotStart: 1,
+      })
+      .populate("createdBy", "name");
+
+    const list = matches.map((match) => {
+      const mine = match.players.find((player) => {
+        return player.cmsId === req.user.cmsId;
+      });
+
+      return {
+        _id: match._id,
+        date: match.date,
+        slotStart: match.slotStart,
+        note: match.note,
+        status: getEffectiveStatus(match),
+        createdBy: match.createdBy?.name || "Unknown",
+        role:
+          String(match.createdBy?._id) === String(req.user._id)
+            ? "poster"
+            : "player",
+        myPlayer: mine
+          ? {
+              team: mine.team,
+              position: mine.position,
+            }
+          : null,
+        teamAClosed: match.teamAClosed,
+        teamBClosed: match.teamBClosed,
+        teamACount: countMain(match.players, "A"),
+        teamBCount: countMain(match.players, "B"),
+      };
+    });
+
+    res.json({
+      matches: list,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+const leaveMatch = async (req, res) => {
+  try {
+    const match = await findActiveMatch(req.params.id);
+
+    if (!match) {
+      return res.status(404).json({
+        message: "Match not found",
+      });
+    }
+
+    if (isSlotPast(match.date, match.slotStart)) {
+      return res.status(400).json({
+        message: "This match has already started",
+      });
+    }
+
+    const joined = match.players.some((player) => {
+      return String(player.user) === String(req.user._id);
+    });
+
+    if (!joined) {
+      return res.status(400).json({
+        message: "You have not joined this match with your account",
+      });
+    }
+
+    match.players = match.players.filter((player) => {
+      return String(player.user) !== String(req.user._id);
+    });
+
+    const mainCount = match.players.filter((player) => {
+      return !player.isReserve;
+    }).length;
+
+    if (match.status === "full" && mainCount < MAIN_POSITIONS.length * 2) {
+      match.status = "open";
+    }
+
+    await match.save();
+
+    res.json({
+      message: "You left the match",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+const updateMatch = async (req, res) => {
+  try {
+    const { note } = req.body;
+    const match = await findActiveMatch(req.params.id);
+
+    if (!match) {
+      return res.status(404).json({
+        message: "Match not found",
+      });
+    }
+
+    if (!canManage(match, req.user)) {
+      return res.status(403).json({
+        message: "Only the poster can edit this match",
+      });
+    }
+
+    if (typeof note !== "string") {
+      return res.status(400).json({
+        message: "Invalid note",
+      });
+    }
+
+    if (getEffectiveStatus(match) === "completed") {
+      return res.status(400).json({
+        message: "This match is already over",
+      });
+    }
+
+    match.note = note.trim().slice(0, 200);
+    await match.save();
+
+    res.json({
+      match,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+const cancelMatch = async (req, res) => {
+  try {
+    const match = await findActiveMatch(req.params.id);
+
+    if (!match) {
+      return res.status(404).json({
+        message: "Match not found",
+      });
+    }
+
+    if (!canManage(match, req.user)) {
+      return res.status(403).json({
+        message: "Only the poster can cancel this match",
+      });
+    }
+
+    if (getEffectiveStatus(match) === "completed") {
+      return res.status(400).json({
+        message: "This match is already over",
+      });
+    }
+
+    match.isActive = false;
+    match.status = "cancelled";
+    await match.save();
+
+    res.json({
+      message: "Match cancelled",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
 export {
   getSlots,
   createMatch,
   getMatches,
+  getMyMatches,
   getMatchById,
   joinMatch,
+  leaveMatch,
+  updateMatch,
+  cancelMatch,
 };
